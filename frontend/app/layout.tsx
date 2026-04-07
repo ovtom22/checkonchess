@@ -34,6 +34,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/feed" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               Watch
             </Link>
+            <Link href="/play" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
+              Play
+            </Link>
             <Link href="/leaderboard" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               Leaderboard
             </Link>

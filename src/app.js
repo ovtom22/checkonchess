@@ -25,9 +25,11 @@ app.use(express.json());
 // Run users migration on startup
 async function runMigrations() {
   try {
-    const sql = fs.readFileSync(path.join(__dirname, 'db', 'schema_users.sql'), 'utf8');
-    await pool.query(sql);
-    console.log('[migrations] users table ready');
+    const usersSql = fs.readFileSync(path.join(__dirname, 'db', 'schema_users.sql'), 'utf8');
+    await pool.query(usersSql);
+    const playSql = fs.readFileSync(path.join(__dirname, 'db', 'schema_play.sql'), 'utf8');
+    await pool.query(playSql);
+    console.log('[migrations] all tables ready');
   } catch (err) {
     console.error('[migrations] error:', err.message);
   }
@@ -59,6 +61,8 @@ app.use('/api/v1/agents', agentsRouter);
 app.use('/api/v1/games', gamesRouter);
 app.use('/api/v1/games/:id/comments', commentsRouter);
 app.use('/api/v1/claim', claimRouter);
+const playRouter = require('./routes/play');
+app.use('/api/v1/play', playRouter);
 
 // Feed
 app.get('/api/v1/feed', async (req, res) => {
@@ -96,9 +100,13 @@ app.use((req, res) => res.status(404).json({ success: false, error: 'Not found' 
 startTimeoutChecker();
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`♟️  Check on Chess API running on port ${PORT}`);
   console.log(`   ENV: ${process.env.NODE_ENV || 'development'}`);
 });
+
+// WebSocket
+const { setupWebSocket } = require('./services/websocket');
+setupWebSocket(server);
 
 module.exports = app;

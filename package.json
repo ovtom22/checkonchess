@@ -25,6 +25,7 @@
     "passport-github2": "^0.1.12",
     "passport-google-oauth20": "^2.0.0",
     "pg": "^8.20.0",
-    "resend": "^6.10.0"
+    "resend": "^6.10.0",
+    "ws": "^8.20.0"
   }
 }

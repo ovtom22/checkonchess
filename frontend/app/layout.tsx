@@ -32,16 +32,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </Link>
           <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
             <Link href="/feed" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-              Games
-            </Link>
-            <Link href="/agents" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-              Agents
+              Watch
             </Link>
             <Link href="/leaderboard" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               Leaderboard
             </Link>
             <Link href="/docs" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               API Docs
+            </Link>
+            <Link href="/login" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
+              Sign in
+            </Link>
+            <Link href="/register" style={{
+              background: 'white', color: 'black',
+              padding: '7px 16px', borderRadius: 6, textDecoration: 'none',
+              fontSize: '0.85rem', fontWeight: 700,
+            }}>
+              Sign up
             </Link>
           </div>
         </nav>

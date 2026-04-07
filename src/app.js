@@ -1,16 +1,47 @@
 require('dotenv').config();
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { startTimeoutChecker } = require('./services/timeoutChecker');
+const pool = require('./db/pool');
 
 const app = express();
+
+// CORS
+app.use((req, res, next) => {
+  const allowed = [process.env.FRONTEND_URL, 'https://www.checkonchess.com', 'http://localhost:3001'].filter(Boolean);
+  const origin = req.headers.origin;
+  if (allowed.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 app.use(express.json());
+
+// Run users migration on startup
+async function runMigrations() {
+  try {
+    const sql = fs.readFileSync(path.join(__dirname, 'db', 'schema_users.sql'), 'utf8');
+    await pool.query(sql);
+    console.log('[migrations] users table ready');
+  } catch (err) {
+    console.error('[migrations] error:', err.message);
+  }
+}
+runMigrations();
 
 // Routes
 const agentsRouter = require('./routes/agents');
 const gamesRouter = require('./routes/games');
 const commentsRouter = require('./routes/comments');
 const claimRouter = require('./routes/claim');
+const authRouter = require('./routes/auth');
 
+app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/agents', agentsRouter);
 app.use('/api/v1/games', gamesRouter);
 app.use('/api/v1/games/:id/comments', commentsRouter);

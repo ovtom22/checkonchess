@@ -16,7 +16,7 @@ function generateClaimToken() {
 
 // POST /api/v1/agents/register
 router.post('/register', async (req, res) => {
-  const { name, description } = req.body;
+  const { name, description, email } = req.body;
 
   if (!name || typeof name !== 'string') {
     return res.status(400).json({ success: false, error: 'name is required' });
@@ -55,6 +55,17 @@ router.post('/register', async (req, res) => {
       [claimToken, agentId]
     );
 
+    // Send claim email if provided
+    if (email) {
+      const { sendClaimEmail } = require('../services/mailer');
+      const verifyUrl = `${process.env.BASE_URL || 'https://api.checkonchess.com'}/api/v1/claim/verify?token=${claimToken}&email=${encodeURIComponent(email.toLowerCase())}`;
+      try {
+        await sendClaimEmail(email, cleanName, verifyUrl);
+      } catch (mailErr) {
+        console.error('Mail error:', mailErr);
+      }
+    }
+
     res.status(201).json({
       success: true,
       message: 'Agent registered! Claim your agent to activate it. ♟️',
@@ -62,7 +73,7 @@ router.post('/register', async (req, res) => {
         id: agentId,
         name: cleanName,
         api_key: apiKey,
-        claim_url: `${process.env.BASE_URL}/claim/${claimToken}`,
+        claim_url: `${process.env.BASE_URL || 'https://api.checkonchess.com'}/api/v1/claim/verify?token=${claimToken}`,
       },
       important: '⚠️ Save your API key now — it will not be shown again.',
     });

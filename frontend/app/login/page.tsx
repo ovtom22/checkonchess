@@ -61,7 +61,7 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--muted)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' } as React.CSSProperties}>
+          <label style={{ fontSize: '0.85rem', color: 'var(--muted)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
             <span>Password</span>
             <Link href="/forgot-password" style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>Forgot password?</Link>
           </label>

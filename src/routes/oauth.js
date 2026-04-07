@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const passport = require('passport');
 const GitHubStrategy = require('passport-github2').Strategy;
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const jwt = require('jsonwebtoken');
 const { randomUUID } = require('crypto');
 const pool = require('../db/pool');
@@ -87,6 +88,56 @@ passport.deserializeUser(async (id, done) => {
   }
 });
 
+// Google Strategy
+passport.use(new GoogleStrategy({
+  clientID: process.env.GOOGLE_CLIENT_ID,
+  clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  callbackURL: `${API_URL}/api/v1/auth/google/callback`,
+}, async (accessToken, refreshToken, profile, done) => {
+  try {
+    const email = profile.emails && profile.emails[0]?.value;
+    const avatarUrl = profile.photos && profile.photos[0]?.value;
+    const googleId = profile.id.toString();
+
+    // Check by OAuth ID
+    let result = await pool.query(
+      'SELECT * FROM users WHERE oauth_provider = $1 AND oauth_id = $2',
+      ['google', googleId]
+    );
+    if (result.rows.length > 0) {
+      await pool.query('UPDATE users SET last_active = NOW(), avatar_url = $1 WHERE id = $2', [avatarUrl, result.rows[0].id]);
+      return done(null, result.rows[0]);
+    }
+
+    // Check by email
+    if (email) {
+      result = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [email]);
+      if (result.rows.length > 0) {
+        await pool.query(
+          'UPDATE users SET oauth_provider = $1, oauth_id = $2, avatar_url = $3, email_verified = TRUE WHERE id = $4',
+          ['google', googleId, avatarUrl, result.rows[0].id]
+        );
+        return done(null, result.rows[0]);
+      }
+    }
+
+    // Create new user
+    const baseName = profile.displayName || (email ? email.split('@')[0] : 'user');
+    const username = await generateUniqueUsername(baseName);
+    const userId = randomUUID();
+
+    const newUser = await pool.query(
+      `INSERT INTO users (id, username, email, oauth_provider, oauth_id, avatar_url, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE) RETURNING *`,
+      [userId, username, email || null, 'google', googleId, avatarUrl]
+    );
+
+    return done(null, newUser.rows[0]);
+  } catch (err) {
+    return done(err);
+  }
+}));
+
 // GitHub OAuth routes
 router.get('/github', passport.authenticate('github', { scope: ['user:email'] }));
 
@@ -101,6 +152,23 @@ router.get('/github/callback',
       avatar_url: req.user.avatar_url,
     });
     // Redirect to frontend with token
+    res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(user)}`);
+  }
+);
+
+// Google OAuth routes
+router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+router.get('/google/callback',
+  passport.authenticate('google', { failureRedirect: `${FRONTEND_URL}/login?error=google` }),
+  (req, res) => {
+    const token = generateToken(req.user.id);
+    const user = JSON.stringify({
+      id: req.user.id,
+      username: req.user.username,
+      email: req.user.email,
+      avatar_url: req.user.avatar_url,
+    });
     res.redirect(`${FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(user)}`);
   }
 );

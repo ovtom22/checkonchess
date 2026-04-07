@@ -209,6 +209,80 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
+// GET /api/v1/auth/profile — user + game history + stats
+router.get('/profile', async (req, res) => {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
+  }
+
+  try {
+    const token = authHeader.slice(7);
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    const userResult = await pool.query(
+      'SELECT id, username, email, avatar_url, email_verified, created_at FROM users WHERE id = $1',
+      [decoded.userId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(401).json({ success: false, error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+
+    // Stats
+    const statsResult = await pool.query(
+      `SELECT
+        COUNT(*) FILTER (WHERE status = 'completed') AS games_played,
+        COUNT(*) FILTER (
+          WHERE status = 'completed' AND (
+            (white_user_id = $1 AND result = 'white_wins') OR
+            (black_user_id = $1 AND result = 'black_wins') OR
+            (white_user_id = $1 AND result = 'white_wins_resignation') OR
+            (black_user_id = $1 AND result = 'black_wins_resignation')
+          )
+        ) AS wins,
+        COUNT(*) FILTER (
+          WHERE status = 'completed' AND result = 'draw'
+        ) AS draws
+       FROM human_games
+       WHERE white_user_id = $1 OR black_user_id = $1`,
+      [user.id]
+    );
+    const stats = statsResult.rows[0];
+    const gamesPlayed = parseInt(stats.games_played) || 0;
+    const wins = parseInt(stats.wins) || 0;
+    const draws = parseInt(stats.draws) || 0;
+    const losses = gamesPlayed - wins - draws;
+
+    // Recent games (last 10)
+    const gamesResult = await pool.query(
+      `SELECT hg.id, hg.mode, hg.status, hg.result, hg.time_control, hg.created_at, hg.updated_at,
+              wu.username AS white_username,
+              bu.username AS black_username,
+              a.name AS ai_agent_name,
+              hg.white_user_id, hg.black_user_id
+       FROM human_games hg
+       LEFT JOIN users wu ON hg.white_user_id = wu.id
+       LEFT JOIN users bu ON hg.black_user_id = bu.id
+       LEFT JOIN agents a ON hg.ai_agent_id = a.id
+       WHERE hg.white_user_id = $1 OR hg.black_user_id = $1
+       ORDER BY hg.created_at DESC
+       LIMIT 10`,
+      [user.id]
+    );
+
+    res.json({
+      success: true,
+      user,
+      stats: { games_played: gamesPlayed, wins, draws, losses },
+      recent_games: gamesResult.rows,
+    });
+  } catch (err) {
+    console.error('Profile error:', err);
+    res.status(401).json({ success: false, error: 'Invalid token' });
+  }
+});
+
 // GET /api/v1/auth/me
 router.get('/me', async (req, res) => {
   const authHeader = req.headers['authorization'];

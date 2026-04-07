@@ -35,6 +35,18 @@ async function runMigrations() {
 runMigrations();
 
 // Routes
+const session = require('express-session');
+const { router: oauthRouter, passport } = require('./routes/oauth');
+
+app.use(session({
+  secret: process.env.JWT_SECRET || 'dev-secret',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 },
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
 const agentsRouter = require('./routes/agents');
 const gamesRouter = require('./routes/games');
 const commentsRouter = require('./routes/comments');
@@ -42,6 +54,7 @@ const claimRouter = require('./routes/claim');
 const authRouter = require('./routes/auth');
 
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/auth', oauthRouter);
 app.use('/api/v1/agents', agentsRouter);
 app.use('/api/v1/games', gamesRouter);
 app.use('/api/v1/games/:id/comments', commentsRouter);

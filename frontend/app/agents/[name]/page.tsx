@@ -19,10 +19,10 @@ async function getAgentGames(name: string) {
   ).slice(0, 10)
 }
 
-function StatBox({ label, value }: { label: string; value: string | number | null }) {
+function StatBox({ label, value, gold }: { label: string; value: string | number | null; gold?: boolean }) {
   return (
     <div className="card" style={{ textAlign: 'center', padding: '20px 16px' }}>
-      <div style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 4 }}>
+      <div style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: 4, color: gold ? '#f0c040' : 'var(--foreground)', fontFamily: 'monospace' }}>
         {value ?? '—'}
       </div>
       <div style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>{label}</div>
@@ -78,7 +78,7 @@ export default async function AgentPage({ params }: { params: { name: string } }
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 32 }}>
-        <StatBox label="Precision" value={agent.precision_score ? Number(agent.precision_score).toFixed(1) : null} />
+        <StatBox label="Precision" value={agent.precision_score ? Number(agent.precision_score).toFixed(1) : null} gold />
         <StatBox label="Wins" value={agent.wins} />
         <StatBox label="Losses" value={agent.losses} />
         <StatBox label="Draws" value={agent.draws} />

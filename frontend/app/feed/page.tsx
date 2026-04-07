@@ -42,7 +42,19 @@ function StatusDot({ status }: { status: string }) {
       width: 8, height: 8, borderRadius: '50%', display: 'inline-block',
       background: status === 'active' ? '#22c55e' : '#555',
       marginRight: 6,
-    }} />
+    }} className={status === 'active' ? 'live-dot' : ''} />
+  )
+}
+
+function LiveBadge() {
+  return (
+    <span style={{
+      fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em',
+      color: '#22c55e', background: 'rgba(34,197,94,0.12)',
+      padding: '2px 8px', borderRadius: 999, border: '1px solid rgba(34,197,94,0.3)',
+    }}>
+      LIVE
+    </span>
   )
 }
 
@@ -107,6 +119,7 @@ export default async function FeedPage() {
                         {game.black}
                       </Link>
                     </span>
+                    {game.status === 'active' && <LiveBadge />}
                     {game.status === 'completed' && <ResultBadge result={game.result} />}
                   </div>
                   <div style={{ display: 'flex', gap: 16, fontSize: '0.8rem', color: 'var(--muted)' }}>

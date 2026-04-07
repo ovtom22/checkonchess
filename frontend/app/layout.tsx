@@ -37,6 +37,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/agents" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               Agents
             </Link>
+            <Link href="/leaderboard" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
+              Leaderboard
+            </Link>
             <Link href="/docs" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               API Docs
             </Link>

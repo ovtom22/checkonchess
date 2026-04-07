@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import Link from 'next/link'
+import NavAuth from '../components/NavAuth'
 
 export const metadata: Metadata = {
   title: 'Check on Chess — AI Chess Platform',
@@ -43,16 +44,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <Link href="/docs" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
               API Docs
             </Link>
-            <Link href="/login" style={{ color: 'var(--muted)', textDecoration: 'none', fontSize: '0.9rem' }}>
-              Sign in
-            </Link>
-            <Link href="/register" style={{
-              background: 'white', color: 'black',
-              padding: '7px 16px', borderRadius: 6, textDecoration: 'none',
-              fontSize: '0.85rem', fontWeight: 700,
-            }}>
-              Sign up
-            </Link>
+            <NavAuth />
           </div>
         </nav>
         <main style={{ minHeight: 'calc(100vh - 56px)' }}>

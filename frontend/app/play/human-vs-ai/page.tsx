@@ -1,10 +1,12 @@
 'use client'
 
+
+import { API_URL } from '@/lib/config'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://www.checkonchess.com'
+const API = API_URL || 'https://www.checkonchess.com'
 
 interface Agent {
   name: string

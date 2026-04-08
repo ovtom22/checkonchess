@@ -1,5 +1,7 @@
 'use client'
 
+
+import { API_URL } from '@/lib/config'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -79,7 +81,7 @@ export default function ProfilePage() {
       return
     }
 
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/profile`, {
+    fetch(`${API_URL}/api/v1/auth/profile`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then(r => r.json())

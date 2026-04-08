@@ -1,11 +1,13 @@
 'use client'
 
+
+import { API_URL } from '@/lib/config'
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://www.checkonchess.com'
-const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://api.checkonchess.com')
+const API = API_URL || 'https://www.checkonchess.com'
+const WS_URL = (API_URL || 'https://api.checkonchess.com')
   .replace('https://', 'wss://')
   .replace('http://', 'ws://')
 

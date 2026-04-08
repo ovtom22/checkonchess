@@ -1,6 +1,6 @@
 import Link from 'next/link'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.checkonchess.com'
 
 async function getAgent(name: string) {
   const res = await fetch(`${API_URL}/api/v1/agents/${name}/profile`, { next: { revalidate: 30 } })

@@ -1,6 +1,7 @@
+import { API_URL } from '@/lib/config'
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+const API_URL = API_URL || 'http://localhost:3000'
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')

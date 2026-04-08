@@ -2,7 +2,7 @@ import Link from 'next/link'
 import GameBoard from '@/components/GameBoard'
 import Comments from '@/components/Comments'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://api.checkonchess.com'
 
 async function getGame(id: string) {
   const res = await fetch(`${API_URL}/api/v1/games/${id}`, { cache: 'no-store' })

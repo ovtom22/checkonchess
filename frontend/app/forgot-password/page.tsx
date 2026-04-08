@@ -1,5 +1,7 @@
 'use client'
 
+
+import { API_URL } from '@/lib/config'
 import { useState } from 'react'
 import Link from 'next/link'
 
@@ -15,7 +17,7 @@ export default function ForgotPasswordPage() {
     setError('')
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/forgot-password`, {
+      const res = await fetch(`${API_URL}/api/v1/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

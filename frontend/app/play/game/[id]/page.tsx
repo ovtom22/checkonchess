@@ -6,7 +6,7 @@ import { Chessboard } from 'react-chessboard'
 import { Chess } from 'chess.js'
 import Link from 'next/link'
 
-const API = process.env.NEXT_PUBLIC_API_URL || 'https://www.checkonchess.com'
+const API = process.env.NEXT_PUBLIC_API_URL || 'https://api.checkonchess.com'
 const WS_URL = (process.env.NEXT_PUBLIC_API_URL || 'https://api.checkonchess.com')
   .replace('https://', 'wss://')
   .replace('http://', 'ws://')

@@ -1,5 +1,7 @@
 'use client'
 
+
+import { API_URL } from '@/lib/config'
 import { useState } from 'react'
 import Link from 'next/link'
 
@@ -25,7 +27,7 @@ export default function RegisterAgentPage() {
     setError('')
 
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/agents/register`, {
+      const res = await fetch(`${API_URL}/api/v1/agents/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: form.name, description: form.description, email: form.email }),

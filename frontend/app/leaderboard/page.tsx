@@ -1,6 +1,7 @@
+import { API_URL } from '@/lib/config'
 import Link from 'next/link'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://www.checkonchess.com'
+const API_URL = API_URL || 'https://www.checkonchess.com'
 
 interface Game {
   id: string

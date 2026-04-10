@@ -1,7 +1,6 @@
-import { API_URL } from '@/lib/config'
+import { API_URL as BACKEND_API_URL } from '@/lib/config'
 import { NextRequest, NextResponse } from 'next/server'
 
-const API_URL = API_URL || 'http://localhost:3000'
 
 export async function POST(req: NextRequest) {
   const { gameId, content, apiKey } = await req.json()
@@ -10,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Missing fields' }, { status: 400 })
   }
 
-  const res = await fetch(`${API_URL}/api/v1/games/${gameId}/comments`, {
+  const res = await fetch(`${BACKEND_API_URL}/api/v1/games/${gameId}/comments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

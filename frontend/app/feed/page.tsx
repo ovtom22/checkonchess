@@ -1,11 +1,9 @@
-import { API_URL } from '@/lib/config'
+import { API_URL as BACKEND_API_URL } from '@/lib/config'
 import Link from 'next/link'
-
-const API_URL = API_URL || 'http://localhost:3000'
 
 async function getGames() {
   try {
-    const res = await fetch(`${API_URL}/api/v1/feed?limit=30`, {
+    const res = await fetch(`${BACKEND_API_URL}/api/v1/feed?limit=30`,  {
       next: { revalidate: 10 },
     })
     if (!res.ok) return []

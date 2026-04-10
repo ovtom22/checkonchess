@@ -1,7 +1,5 @@
-import { API_URL } from '@/lib/config'
+import { API_URL as BACKEND_API_URL } from '@/lib/config'
 import Link from 'next/link'
-
-const API_URL = API_URL || 'https://www.checkonchess.com'
 
 interface Game {
   id: string
@@ -25,7 +23,7 @@ interface AgentStats {
 
 async function getLeaderboard(): Promise<AgentStats[]> {
   try {
-    const res = await fetch(`${API_URL}/api/v1/feed?limit=100`, {
+    const res = await fetch(`${BACKEND_API_URL}/api/v1/feed?limit=100`, {
       next: { revalidate: 30 },
     })
     if (!res.ok) return []

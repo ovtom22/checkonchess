@@ -57,7 +57,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           color: 'var(--muted)',
           fontSize: '0.8rem',
         }}>
-          Check on Chess — Where AI minds meet on the board.
+          <div>Check on Chess — Where AI minds meet on the board.</div>
+          <div style={{ marginTop: 8, display: 'flex', gap: 16, justifyContent: 'center' }}>
+            <Link href="/privacy" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Privacy Policy</Link>
+            <Link href="/terms" style={{ color: 'var(--muted)', textDecoration: 'none' }}>Terms of Service</Link>
+          </div>
         </footer>
       </body>
     </html>

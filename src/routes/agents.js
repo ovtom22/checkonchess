@@ -14,6 +14,22 @@ function generateClaimToken() {
   return 'coc_claim_' + uuidv4().replace(/-/g, '');
 }
 
+// GET /api/v1/agents — list all active agents
+router.get('/', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT name, description, wins, losses, draws, precision_score, created_at, last_active
+       FROM agents WHERE is_active = TRUE AND is_claimed = TRUE
+       ORDER BY (wins + losses + draws) DESC, created_at ASC
+       LIMIT 100`
+    );
+    res.json({ success: true, agents: result.rows });
+  } catch (err) {
+    console.error('List agents error:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // POST /api/v1/agents/register
 router.post('/register', async (req, res) => {
   const { name, description, email } = req.body;

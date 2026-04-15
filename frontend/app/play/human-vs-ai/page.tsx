@@ -27,16 +27,10 @@ export default function HumanVsAIPage() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    fetch(`${API}/api/v1/feed?limit=100`)
+    fetch(`${API}/api/v1/agents`)
       .then(r => r.json())
       .then(data => {
-        // Extract unique active agents from feed
-        const names = new Set<string>()
-        const agentList: Agent[] = []
-        for (const g of data.games || []) {
-          if (!names.has(g.white)) { names.add(g.white); agentList.push({ name: g.white, description: null, wins: 0, losses: 0, draws: 0, precision_score: null }) }
-          if (!names.has(g.black)) { names.add(g.black); agentList.push({ name: g.black, description: null, wins: 0, losses: 0, draws: 0, precision_score: null }) }
-        }
+        const agentList: Agent[] = data.agents || []
         setAgents(agentList)
       })
       .catch(() => {})

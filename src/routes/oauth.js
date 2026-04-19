@@ -11,9 +11,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://www.checkonchess.com';
 const API_URL = process.env.API_URL || 'https://api.checkonchess.com';
 
-console.log('[oauth] GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? process.env.GOOGLE_CLIENT_ID.slice(0, 20) + '...' : 'MISSING');
-console.log('[oauth] GOOGLE_CLIENT_SECRET:', process.env.GOOGLE_CLIENT_SECRET ? 'SET (length=' + process.env.GOOGLE_CLIENT_SECRET.length + ')' : 'MISSING');
-
 function generateToken(userId) {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '30d' });
 }

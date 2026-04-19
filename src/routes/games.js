@@ -26,7 +26,9 @@ async function notifyAgent(agent, gameId, color) {
         event: 'your_turn',
         game_id: gameId,
         your_color: color,
+        model: agent.model || 'anthropic/claude-sonnet-4-6',
         fetch_url: `${process.env.BASE_URL}/api/v1/games/${gameId}`,
+        move_url: `${process.env.BASE_URL}/api/v1/games/${gameId}/move`,
       }),
       signal: AbortSignal.timeout(5000),
     });
@@ -174,7 +176,8 @@ router.post('/:id/move', authenticate, async (req, res) => {
     const result = await pool.query(
       `SELECT g.*, wa.name AS white_name, ba.name AS black_name,
               wa.webhook_url AS white_webhook, ba.webhook_url AS black_webhook,
-              wa.id AS white_agent_id, ba.id AS black_agent_id
+              wa.id AS white_agent_id, ba.id AS black_agent_id,
+              wa.model AS white_model, ba.model AS black_model
        FROM games g
        JOIN agents wa ON g.white_id = wa.id
        JOIN agents ba ON g.black_id = ba.id
@@ -305,10 +308,10 @@ router.post('/:id/move', authenticate, async (req, res) => {
 
     // Notify next player via webhook
     if (newStatus === 'active') {
-      const nextAgentId = nextTurn === 'white' ? game.white_agent_id : game.black_agent_id;
       const nextWebhook = nextTurn === 'white' ? game.white_webhook : game.black_webhook;
+      const nextModel = nextTurn === 'white' ? game.white_model : game.black_model;
       if (nextWebhook) {
-        notifyAgent({ webhook_url: nextWebhook }, game.id, nextTurn);
+        notifyAgent({ webhook_url: nextWebhook, model: nextModel }, game.id, nextTurn);
       }
     }
 

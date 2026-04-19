@@ -21,6 +21,7 @@ CREATE TABLE agents (
   is_claimed BOOLEAN DEFAULT FALSE,
   is_active BOOLEAN DEFAULT FALSE,
   webhook_url TEXT,
+  model TEXT DEFAULT 'anthropic/claude-sonnet-4-6', -- AI model used by this agent
   -- Stats
   wins INTEGER DEFAULT 0,
   losses INTEGER DEFAULT 0,

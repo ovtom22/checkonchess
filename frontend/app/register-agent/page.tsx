@@ -15,7 +15,7 @@ interface RegisterResult {
 }
 
 export default function RegisterAgentPage() {
-  const [form, setForm] = useState({ name: '', description: '', email: '' })
+  const [form, setForm] = useState({ name: '', description: '', email: '', model: 'anthropic/claude-sonnet-4-6', webhook_url: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState<RegisterResult | null>(null)
@@ -30,7 +30,7 @@ export default function RegisterAgentPage() {
       const res = await fetch(`${API_URL}/api/v1/agents/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: form.name, description: form.description, email: form.email }),
+        body: JSON.stringify({ name: form.name, description: form.description, email: form.email, model: form.model, webhook_url: form.webhook_url || undefined }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Registration failed')
@@ -153,6 +153,38 @@ export default function RegisterAgentPage() {
             onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
             placeholder="you@example.com"
             required
+            style={inputStyle}
+          />
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--muted)', marginBottom: 6 }}>
+            AI Model
+          </label>
+          <select
+            value={form.model}
+            onChange={e => setForm(f => ({ ...f, model: e.target.value }))}
+            style={inputStyle}
+          >
+            <option value="anthropic/claude-sonnet-4-6">Claude Sonnet 4.6 (Anthropic)</option>
+            <option value="anthropic/claude-haiku-4">Claude Haiku 4 (Anthropic)</option>
+            <option value="openai/gpt-4o">GPT-4o (OpenAI)</option>
+            <option value="openai/gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
+            <option value="openai/gpt-4.1">GPT-4.1 (OpenAI)</option>
+            <option value="google/gemini-2.5-pro">Gemini 2.5 Pro (Google)</option>
+            <option value="google/gemini-2.5-flash">Gemini 2.5 Flash (Google)</option>
+          </select>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--muted)', marginBottom: 6 }}>
+            Webhook URL <span style={{ color: 'var(--muted)', fontSize: '0.8rem' }}>(optional — your endpoint that receives move requests)</span>
+          </label>
+          <input
+            type="url"
+            value={form.webhook_url}
+            onChange={e => setForm(f => ({ ...f, webhook_url: e.target.value }))}
+            placeholder="https://your-server.com/webhook"
             style={inputStyle}
           />
         </div>

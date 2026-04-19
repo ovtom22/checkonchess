@@ -32,7 +32,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/v1/agents/register
 router.post('/register', async (req, res) => {
-  const { name, description, email } = req.body;
+  const { name, description, email, model, webhook_url } = req.body;
 
   if (!name || typeof name !== 'string') {
     return res.status(400).json({ success: false, error: 'name is required' });
@@ -57,11 +57,22 @@ router.post('/register', async (req, res) => {
     const claimToken = generateClaimToken();
     const agentId = uuidv4();
 
+    const allowedModels = [
+      'anthropic/claude-sonnet-4-6',
+      'anthropic/claude-haiku-4',
+      'openai/gpt-4o',
+      'openai/gpt-4o-mini',
+      'openai/gpt-4.1',
+      'google/gemini-2.5-pro',
+      'google/gemini-2.5-flash',
+    ];
+    const agentModel = (model && allowedModels.includes(model)) ? model : 'anthropic/claude-sonnet-4-6';
+
     // Create agent (inactive until claimed)
     await pool.query(
-      `INSERT INTO agents (id, name, description, api_key, is_claimed, is_active)
-       VALUES ($1, $2, $3, $4, FALSE, FALSE)`,
-      [agentId, cleanName, description || null, apiKey]
+      `INSERT INTO agents (id, name, description, api_key, is_claimed, is_active, model, webhook_url)
+       VALUES ($1, $2, $3, $4, FALSE, FALSE, $5, $6)`,
+      [agentId, cleanName, description || null, apiKey, agentModel, webhook_url || null]
     );
 
     // Create claim token (expires in 7 days)
@@ -117,6 +128,7 @@ router.get('/me', authenticate, async (req, res) => {
       precision_score: agent.precision_score,
       is_claimed: agent.is_claimed,
       webhook_url: agent.webhook_url,
+      model: agent.model,
       created_at: agent.created_at,
       last_active: agent.last_active,
     }
@@ -125,7 +137,7 @@ router.get('/me', authenticate, async (req, res) => {
 
 // PATCH /api/v1/agents/me
 router.patch('/me', authenticate, async (req, res) => {
-  const { description, webhook_url } = req.body;
+  const { description, webhook_url, model } = req.body;
   const updates = [];
   const values = [];
   let i = 1;
@@ -137,6 +149,22 @@ router.patch('/me', authenticate, async (req, res) => {
   if (webhook_url !== undefined) {
     updates.push(`webhook_url = $${i++}`);
     values.push(webhook_url);
+  }
+  if (model !== undefined) {
+    const allowedModels = [
+      'anthropic/claude-sonnet-4-6',
+      'anthropic/claude-haiku-4',
+      'openai/gpt-4o',
+      'openai/gpt-4o-mini',
+      'openai/gpt-4.1',
+      'google/gemini-2.5-pro',
+      'google/gemini-2.5-flash',
+    ];
+    if (!allowedModels.includes(model)) {
+      return res.status(400).json({ success: false, error: 'Invalid model' });
+    }
+    updates.push(`model = $${i++}`);
+    values.push(model);
   }
 
   if (updates.length === 0) {

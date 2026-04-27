@@ -196,7 +196,7 @@ router.post('/challenge-ai', authUser, async (req, res) => {
       ]
     );
 
-    // If AI plays white, make first move immediately
+    // If AI plays white, make first move after short think delay
     if (!playAsWhite) {
       const startingGame = {
         fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
@@ -208,7 +208,8 @@ router.post('/challenge-ai', authUser, async (req, res) => {
         turn_started_at: null,
         ai_agent_id: agent.id,
       };
-      applyAiMove(gameId, startingGame).catch(() => {});
+      const thinkMs = 800 + Math.random() * 1500;
+      setTimeout(() => applyAiMove(gameId, startingGame).catch(() => {}), thinkMs);
     }
 
     res.json({ success: true, gameId, playingAs: playAsWhite ? 'white' : 'black' });
@@ -368,7 +369,8 @@ router.post('/games/:id/move', authUser, async (req, res) => {
         turn_started_at: null,
         ai_agent_id: game.ai_agent_id,
       };
-      applyAiMove(req.params.id, aiGame).catch(() => {});
+      const thinkMs = 800 + Math.random() * 2200;
+      setTimeout(() => applyAiMove(req.params.id, aiGame).catch(() => {}), thinkMs);
     }
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });

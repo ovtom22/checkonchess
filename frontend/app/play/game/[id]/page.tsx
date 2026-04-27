@@ -151,6 +151,18 @@ export default function PlayGamePage() {
   const myColor = game?.white_user_id === myUserId ? 'white' : 'black'
   const boardOrientation = isMyGame ? myColor : 'white'
 
+  // Top of board = opponent (pieces at top), bottom = me (pieces at bottom)
+  const topColor = boardOrientation === 'white' ? 'black' : 'white'
+  const bottomColor = boardOrientation === 'white' ? 'white' : 'black'
+  const topName = topColor === 'white' ? (game?.white_username || 'White') : (game?.black_username || game?.ai_agent_name || 'Black')
+  const bottomName = bottomColor === 'white' ? (game?.white_username || 'White') : (game?.black_username || game?.ai_agent_name || 'Black')
+  const topTime = topColor === 'white' ? whiteTime : blackTime
+  const bottomTime = bottomColor === 'white' ? whiteTime : blackTime
+  const topDot = game?.current_turn === topColor && game?.status === 'active'
+  const bottomDot = game?.current_turn === bottomColor && game?.status === 'active'
+  const topCircleColor = topColor === 'white' ? '#f5f5f5' : '#1a1a1a'
+  const bottomCircleColor = bottomColor === 'white' ? '#f5f5f5' : '#1a1a1a'
+
   if (!game) return (
     <div style={{ textAlign: 'center', padding: 80 }}>
       <p style={{ color: 'var(--muted)' }}>Loading game...</p>
@@ -173,23 +185,23 @@ export default function PlayGamePage() {
 
       <div style={{ marginTop: 24, display: 'grid', gridTemplateColumns: '1fr 300px', gap: 24, alignItems: 'start' }}>
         <div>
-          {/* Black player */}
+          {/* Top player (opponent) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#1a1a1a', border: '2px solid #555', display: 'inline-block' }} />
-              <span style={{ fontWeight: 600 }}>{game.black_username || game.ai_agent_name || 'Black'}</span>
-              {game.current_turn === 'black' && game.status === 'active' && (
+              <span style={{ width: 20, height: 20, borderRadius: '50%', background: topCircleColor, border: '2px solid #555', display: 'inline-block' }} />
+              <span style={{ fontWeight: 600 }}>{topName}</span>
+              {topDot && (
                 <span className="live-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
               )}
             </div>
             <span style={{
               fontFamily: 'monospace', fontWeight: 700, fontSize: '1.2rem',
               padding: '4px 12px', borderRadius: 6,
-              background: game.current_turn === 'black' && game.status === 'active' ? '#166534' : 'var(--card)',
+              background: topDot ? '#166534' : 'var(--card)',
               border: '1px solid var(--border)',
-              color: blackTime < 30000 ? '#ef4444' : 'var(--foreground)',
+              color: topTime < 30000 ? '#ef4444' : 'var(--foreground)',
             }}>
-              {formatTime(blackTime)}
+              {formatTime(topTime)}
             </span>
           </div>
 
@@ -235,23 +247,23 @@ export default function PlayGamePage() {
             />
           </div>
 
-          {/* White player */}
+          {/* Bottom player (me) */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#f5f5f5', border: '2px solid #555', display: 'inline-block' }} />
-              <span style={{ fontWeight: 600 }}>{game.white_username || 'White'}</span>
-              {game.current_turn === 'white' && game.status === 'active' && (
+              <span style={{ width: 20, height: 20, borderRadius: '50%', background: bottomCircleColor, border: '2px solid #555', display: 'inline-block' }} />
+              <span style={{ fontWeight: 600 }}>{bottomName}</span>
+              {bottomDot && (
                 <span className="live-dot" style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
               )}
             </div>
             <span style={{
               fontFamily: 'monospace', fontWeight: 700, fontSize: '1.2rem',
               padding: '4px 12px', borderRadius: 6,
-              background: game.current_turn === 'white' && game.status === 'active' ? '#166534' : 'var(--card)',
+              background: bottomDot ? '#166534' : 'var(--card)',
               border: '1px solid var(--border)',
-              color: whiteTime < 30000 ? '#ef4444' : 'var(--foreground)',
+              color: bottomTime < 30000 ? '#ef4444' : 'var(--foreground)',
             }}>
-              {formatTime(whiteTime)}
+              {formatTime(bottomTime)}
             </span>
           </div>
 

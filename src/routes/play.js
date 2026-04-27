@@ -9,38 +9,27 @@ const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
-// --- AI move picker (pure chess.js, no external deps) ---
-const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+// --- AI move: Stockfish engine (fallback to heuristic) ---
+const { getBestMove } = require('../services/stockfish');
 
-function pickAiMove(fen) {
+function pickFallbackMove(fen) {
   const chess = new Chess(fen);
   const moves = chess.moves({ verbose: true });
-  if (moves.length === 0) return null;
-
-  const centerSquares = new Set(['d4','d5','e4','e5','c4','c5','f4','f5','d3','d6','e3','e6']);
-
-  let bestScore = -Infinity;
-  let bestMoves = [];
-
-  for (const move of moves) {
-    let score = 0;
-    if (move.captured) score += PIECE_VALUES[move.captured] * 10;
-    if (move.promotion) score += (PIECE_VALUES[move.promotion] || 0) * 10;
-    if (centerSquares.has(move.to)) score += 2;
-    chess.move(move);
-    if (chess.isCheckmate()) score += 10000;
-    else if (chess.inCheck()) score += 3;
-    chess.undo();
-    if (score > bestScore) { bestScore = score; bestMoves = [move]; }
-    else if (score === bestScore) bestMoves.push(move);
-  }
-
-  const chosen = bestMoves[Math.floor(Math.random() * bestMoves.length)];
-  return chosen.from + chosen.to + (chosen.promotion ? chosen.promotion : '');
+  if (!moves.length) return null;
+  const captures = moves.filter(m => m.captured);
+  const pool2 = captures.length ? captures : moves;
+  const chosen = pool2[Math.floor(Math.random() * pool2.length)];
+  return chosen.from + chosen.to + (chosen.promotion || '');
 }
 
 async function applyAiMove(gameId, game) {
-  const aiUci = pickAiMove(game.fen);
+  let aiUci = null;
+  try {
+    aiUci = await getBestMove(game.fen, 1500);
+  } catch (e) {
+    aiUci = pickFallbackMove(game.fen);
+  }
+  if (!aiUci) aiUci = pickFallbackMove(game.fen);
   if (!aiUci) return null;
 
   const chess = new Chess(game.fen);
@@ -208,8 +197,7 @@ router.post('/challenge-ai', authUser, async (req, res) => {
         turn_started_at: null,
         ai_agent_id: agent.id,
       };
-      const thinkMs = 800 + Math.random() * 1500;
-      setTimeout(() => applyAiMove(gameId, startingGame).catch(() => {}), thinkMs);
+      applyAiMove(gameId, startingGame).catch(() => {});
     }
 
     res.json({ success: true, gameId, playingAs: playAsWhite ? 'white' : 'black' });
@@ -369,8 +357,7 @@ router.post('/games/:id/move', authUser, async (req, res) => {
         turn_started_at: null,
         ai_agent_id: game.ai_agent_id,
       };
-      const thinkMs = 800 + Math.random() * 2200;
-      setTimeout(() => applyAiMove(req.params.id, aiGame).catch(() => {}), thinkMs);
+      applyAiMove(req.params.id, aiGame).catch(() => {});
     }
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });

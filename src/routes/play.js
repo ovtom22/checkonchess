@@ -5,6 +5,7 @@ const { Chess } = require('chess.js');
 const { randomUUID } = require('crypto');
 const pool = require('../db/pool');
 const { broadcast } = require('../services/websocket');
+const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
@@ -246,6 +247,24 @@ router.post('/games/:id/move', authUser, async (req, res) => {
       result: gameResult,
     });
 
+    // If human-vs-ai and game still active, notify the agent's webhook (best-effort)
+    if (status === 'active' && game.mode === 'human-vs-ai' && game.ai_agent_id) {
+      const agentResult = await pool.query('SELECT webhook_url FROM agents WHERE id = $1', [game.ai_agent_id]);
+      const agentWebhook = agentResult.rows[0]?.webhook_url;
+      if (agentWebhook) {
+        fetch(agentWebhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'your_turn',
+            game_id: req.params.id,
+            fen: newFen,
+            your_color: nextTurn,
+          }),
+        }).catch(() => {});
+      }
+    }
+
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });
   } catch (err) {
     console.error('Move error:', err);
@@ -276,6 +295,126 @@ router.post('/games/:id/resign', authUser, async (req, res) => {
     res.json({ success: true, result: gameResult });
   } catch (err) {
     console.error('Resign error:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// GET /api/v1/play/games/ai-pending — list games waiting for this agent's move
+router.get('/games/ai-pending', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT hg.id, hg.fen, hg.current_turn, hg.mode, hg.status,
+              hg.white_user_id, hg.black_user_id,
+              wu.username AS white_username,
+              bu.username AS black_username,
+              hg.white_time_ms, hg.black_time_ms
+       FROM human_games hg
+       LEFT JOIN users wu ON hg.white_user_id = wu.id
+       LEFT JOIN users bu ON hg.black_user_id = bu.id
+       WHERE hg.ai_agent_id = $1
+         AND hg.status = 'active'
+         AND (
+           (hg.white_user_id IS NULL AND hg.current_turn = 'white')
+           OR (hg.black_user_id IS NULL AND hg.current_turn = 'black')
+         )`,
+      [req.agent.id]
+    );
+    res.json({ success: true, games: result.rows });
+  } catch (err) {
+    console.error('AI pending error:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
+// POST /api/v1/play/games/:id/ai-move — agent submits a move
+router.post('/games/:id/ai-move', authenticate, async (req, res) => {
+  const { uci, san } = req.body;
+
+  try {
+    const result = await pool.query('SELECT * FROM human_games WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Game not found' });
+
+    const game = result.rows[0];
+    if (game.status !== 'active') return res.status(400).json({ success: false, error: 'Game is not active' });
+    if (game.ai_agent_id !== req.agent.id) return res.status(403).json({ success: false, error: 'Not your game' });
+
+    // Verify it's the agent's turn
+    const agentIsWhite = game.white_user_id === null;
+    const agentIsBlack = game.black_user_id === null;
+    if (game.current_turn === 'white' && !agentIsWhite) return res.status(400).json({ success: false, error: 'Not your turn' });
+    if (game.current_turn === 'black' && !agentIsBlack) return res.status(400).json({ success: false, error: 'Not your turn' });
+
+    // Validate move
+    const chess = new Chess(game.fen);
+    let moveResult;
+    try {
+      moveResult = chess.move(san || uci);
+      if (!moveResult) throw new Error('Invalid move');
+    } catch {
+      return res.status(400).json({ success: false, error: 'Invalid move' });
+    }
+
+    const newFen = chess.fen();
+    const nextTurn = game.current_turn === 'white' ? 'black' : 'white';
+    const moveCount = await pool.query('SELECT COUNT(*) FROM human_moves WHERE game_id = $1', [req.params.id]);
+    const moveNumber = parseInt(moveCount.rows[0].count) + 1;
+
+    const now = Date.now();
+    const turnStarted = game.turn_started_at ? new Date(game.turn_started_at).getTime() : now;
+    const timeSpent = now - turnStarted;
+    const timeRemaining = game.current_turn === 'white'
+      ? Math.max(0, game.white_time_ms - timeSpent)
+      : Math.max(0, game.black_time_ms - timeSpent);
+
+    // Save move (null user_id for agent moves)
+    await pool.query(
+      `INSERT INTO human_moves (game_id, user_id, move_number, color, san, uci, fen_after, time_spent_ms)
+       VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)`,
+      [req.params.id, moveNumber, game.current_turn, moveResult.san, moveResult.lan || uci, newFen, timeSpent]
+    );
+
+    // Check game over
+    let status = 'active';
+    let gameResult = null;
+    if (chess.isCheckmate()) {
+      status = 'completed';
+      gameResult = game.current_turn === 'white' ? 'white_wins' : 'black_wins';
+    } else if (chess.isDraw()) {
+      status = 'completed';
+      gameResult = 'draw';
+    }
+
+    const updateQuery = status === 'completed'
+      ? `UPDATE human_games SET fen = $1, current_turn = $2, status = $3, result = $4,
+         ${game.current_turn === 'white' ? 'white_time_ms' : 'black_time_ms'} = $5, updated_at = NOW() WHERE id = $6`
+      : `UPDATE human_games SET fen = $1, current_turn = $2, status = $3, result = $4,
+         ${game.current_turn === 'white' ? 'white_time_ms' : 'black_time_ms'} = $5, turn_started_at = NOW(), updated_at = NOW() WHERE id = $6`;
+
+    await pool.query(updateQuery, [newFen, nextTurn, status, gameResult, timeRemaining, req.params.id]);
+
+    // Update agent stats if game over
+    if (status === 'completed') {
+      const agentWon = (agentIsWhite && gameResult === 'white_wins') || (agentIsBlack && gameResult === 'black_wins');
+      const agentLost = (agentIsWhite && gameResult === 'black_wins') || (agentIsBlack && gameResult === 'white_wins');
+      if (agentWon) await pool.query('UPDATE agents SET wins = wins + 1 WHERE id = $1', [req.agent.id]);
+      else if (agentLost) await pool.query('UPDATE agents SET losses = losses + 1 WHERE id = $1', [req.agent.id]);
+      else await pool.query('UPDATE agents SET draws = draws + 1 WHERE id = $1', [req.agent.id]);
+    }
+
+    await pool.query('UPDATE agents SET last_active = NOW() WHERE id = $1', [req.agent.id]);
+
+    broadcast(req.params.id, {
+      type: 'move',
+      san: moveResult.san,
+      fen: newFen,
+      turn: nextTurn,
+      status,
+      result: gameResult,
+    });
+
+    res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });
+  } catch (err) {
+    console.error('AI move error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

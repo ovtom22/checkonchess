@@ -9,6 +9,88 @@ const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
+// --- AI move picker (pure chess.js, no external deps) ---
+const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+function pickAiMove(fen) {
+  const chess = new Chess(fen);
+  const moves = chess.moves({ verbose: true });
+  if (moves.length === 0) return null;
+
+  const centerSquares = new Set(['d4','d5','e4','e5','c4','c5','f4','f5','d3','d6','e3','e6']);
+
+  let bestScore = -Infinity;
+  let bestMoves = [];
+
+  for (const move of moves) {
+    let score = 0;
+    if (move.captured) score += PIECE_VALUES[move.captured] * 10;
+    if (move.promotion) score += (PIECE_VALUES[move.promotion] || 0) * 10;
+    if (centerSquares.has(move.to)) score += 2;
+    chess.move(move);
+    if (chess.isCheckmate()) score += 10000;
+    else if (chess.inCheck()) score += 3;
+    chess.undo();
+    if (score > bestScore) { bestScore = score; bestMoves = [move]; }
+    else if (score === bestScore) bestMoves.push(move);
+  }
+
+  const chosen = bestMoves[Math.floor(Math.random() * bestMoves.length)];
+  return chosen.from + chosen.to + (chosen.promotion ? chosen.promotion : '');
+}
+
+async function applyAiMove(gameId, game) {
+  const aiUci = pickAiMove(game.fen);
+  if (!aiUci) return null;
+
+  const chess = new Chess(game.fen);
+  const moveResult = chess.move(aiUci);
+  if (!moveResult) return null;
+
+  const newFen = chess.fen();
+  const nextTurn = game.current_turn === 'white' ? 'black' : 'white';
+  const moveCount = await pool.query('SELECT COUNT(*) FROM human_moves WHERE game_id = $1', [gameId]);
+  const moveNumber = parseInt(moveCount.rows[0].count) + 1;
+
+  const now = Date.now();
+  const turnStarted = game.turn_started_at ? new Date(game.turn_started_at).getTime() : now;
+  const timeSpent = now - turnStarted;
+  const timeRemaining = game.current_turn === 'white'
+    ? Math.max(0, game.white_time_ms - timeSpent)
+    : Math.max(0, game.black_time_ms - timeSpent);
+
+  await pool.query(
+    `INSERT INTO human_moves (game_id, user_id, move_number, color, san, uci, fen_after, time_spent_ms)
+     VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)`,
+    [gameId, moveNumber, game.current_turn, moveResult.san, aiUci, newFen, timeSpent]
+  );
+
+  let status = 'active';
+  let gameResult = null;
+  if (chess.isCheckmate()) { status = 'completed'; gameResult = game.current_turn === 'white' ? 'white_wins' : 'black_wins'; }
+  else if (chess.isDraw()) { status = 'completed'; gameResult = 'draw'; }
+
+  const timeCol = game.current_turn === 'white' ? 'white_time_ms' : 'black_time_ms';
+  const q = status === 'completed'
+    ? `UPDATE human_games SET fen=$1, current_turn=$2, status=$3, result=$4, ${timeCol}=$5, updated_at=NOW() WHERE id=$6`
+    : `UPDATE human_games SET fen=$1, current_turn=$2, status=$3, result=$4, ${timeCol}=$5, turn_started_at=NOW(), updated_at=NOW() WHERE id=$6`;
+  await pool.query(q, [newFen, nextTurn, status, gameResult, timeRemaining, gameId]);
+
+  if (status === 'completed' && game.ai_agent_id) {
+    const agentIsWhite = game.white_user_id === null;
+    const agentIsBlack = game.black_user_id === null;
+    const agentWon = (agentIsWhite && gameResult === 'white_wins') || (agentIsBlack && gameResult === 'black_wins');
+    const agentLost = (agentIsWhite && gameResult === 'black_wins') || (agentIsBlack && gameResult === 'white_wins');
+    if (agentWon) await pool.query('UPDATE agents SET wins=wins+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
+    else if (agentLost) await pool.query('UPDATE agents SET losses=losses+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
+    else await pool.query('UPDATE agents SET draws=draws+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
+  }
+
+  broadcast(gameId, { type: 'move', san: moveResult.san, fen: newFen, turn: nextTurn, status, result: gameResult });
+  return { san: moveResult.san, fen: newFen, status, result: gameResult };
+}
+// ---------------------------------------------------------
+
 // Middleware: authenticate human user via JWT
 async function authUser(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -114,19 +196,19 @@ router.post('/challenge-ai', authUser, async (req, res) => {
       ]
     );
 
-    // Notify agent via webhook if set
-    if (agent.webhook_url) {
-      fetch(agent.webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: 'human_challenge',
-          game_id: gameId,
-          human_plays: playAsWhite ? 'white' : 'black',
-          fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-          your_turn: !playAsWhite,
-        }),
-      }).catch(() => {});
+    // If AI plays white, make first move immediately
+    if (!playAsWhite) {
+      const startingGame = {
+        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+        current_turn: 'white',
+        white_user_id: null,
+        black_user_id: req.user.id,
+        white_time_ms: time_control * 1000,
+        black_time_ms: time_control * 1000,
+        turn_started_at: null,
+        ai_agent_id: agent.id,
+      };
+      applyAiMove(gameId, startingGame).catch(() => {});
     }
 
     res.json({ success: true, gameId, playingAs: playAsWhite ? 'white' : 'black' });
@@ -274,22 +356,19 @@ router.post('/games/:id/move', authUser, async (req, res) => {
       result: gameResult,
     });
 
-    // If human-vs-ai and game still active, notify the agent's webhook (best-effort)
+    // If human-vs-ai and still active, AI moves immediately
     if (status === 'active' && game.mode === 'human-vs-ai' && game.ai_agent_id) {
-      const agentResult = await pool.query('SELECT webhook_url FROM agents WHERE id = $1', [game.ai_agent_id]);
-      const agentWebhook = agentResult.rows[0]?.webhook_url;
-      if (agentWebhook) {
-        fetch(agentWebhook, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            event: 'your_turn',
-            game_id: req.params.id,
-            fen: newFen,
-            your_color: nextTurn,
-          }),
-        }).catch(() => {});
-      }
+      const aiGame = {
+        fen: newFen,
+        current_turn: nextTurn,
+        white_user_id: game.white_user_id,
+        black_user_id: game.black_user_id,
+        white_time_ms: game.current_turn === 'white' ? timeRemaining : game.white_time_ms,
+        black_time_ms: game.current_turn === 'black' ? timeRemaining : game.black_time_ms,
+        turn_started_at: null,
+        ai_agent_id: game.ai_agent_id,
+      };
+      applyAiMove(req.params.id, aiGame).catch(() => {});
     }
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });

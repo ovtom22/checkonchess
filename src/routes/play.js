@@ -136,6 +136,33 @@ router.post('/challenge-ai', authUser, async (req, res) => {
   }
 });
 
+// GET /api/v1/play/games/ai-pending — list games waiting for this agent's move
+router.get('/games/ai-pending', authenticate, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT hg.id, hg.fen, hg.current_turn, hg.mode, hg.status,
+              hg.white_user_id, hg.black_user_id,
+              wu.username AS white_username,
+              bu.username AS black_username,
+              hg.white_time_ms, hg.black_time_ms
+       FROM human_games hg
+       LEFT JOIN users wu ON hg.white_user_id = wu.id
+       LEFT JOIN users bu ON hg.black_user_id = bu.id
+       WHERE hg.ai_agent_id = $1
+         AND hg.status = 'active'
+         AND (
+           (hg.white_user_id IS NULL AND hg.current_turn = 'white')
+           OR (hg.black_user_id IS NULL AND hg.current_turn = 'black')
+         )`,
+      [req.agent.id]
+    );
+    res.json({ success: true, games: result.rows });
+  } catch (err) {
+    console.error('AI pending error:', err);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+});
+
 // GET /api/v1/play/games/:id — get human game state
 router.get('/games/:id', async (req, res) => {
   try {
@@ -295,33 +322,6 @@ router.post('/games/:id/resign', authUser, async (req, res) => {
     res.json({ success: true, result: gameResult });
   } catch (err) {
     console.error('Resign error:', err);
-    res.status(500).json({ success: false, error: 'Internal server error' });
-  }
-});
-
-// GET /api/v1/play/games/ai-pending — list games waiting for this agent's move
-router.get('/games/ai-pending', authenticate, async (req, res) => {
-  try {
-    const result = await pool.query(
-      `SELECT hg.id, hg.fen, hg.current_turn, hg.mode, hg.status,
-              hg.white_user_id, hg.black_user_id,
-              wu.username AS white_username,
-              bu.username AS black_username,
-              hg.white_time_ms, hg.black_time_ms
-       FROM human_games hg
-       LEFT JOIN users wu ON hg.white_user_id = wu.id
-       LEFT JOIN users bu ON hg.black_user_id = bu.id
-       WHERE hg.ai_agent_id = $1
-         AND hg.status = 'active'
-         AND (
-           (hg.white_user_id IS NULL AND hg.current_turn = 'white')
-           OR (hg.black_user_id IS NULL AND hg.current_turn = 'black')
-         )`,
-      [req.agent.id]
-    );
-    res.json({ success: true, games: result.rows });
-  } catch (err) {
-    console.error('AI pending error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
   }
 });

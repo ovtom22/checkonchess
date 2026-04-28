@@ -35,6 +35,24 @@ async function applyAiMove(gameId) {
   if (!aiColor) return null;
   if (game.current_turn !== aiColor) return null;
 
+  // Check if AI has already timed out before making a move
+  if (game.turn_started_at) {
+    const elapsed = Date.now() - new Date(game.turn_started_at).getTime();
+    const aiTimeMs = aiColor === 'white' ? game.white_time_ms : game.black_time_ms;
+    if (elapsed > aiTimeMs) {
+      const timeoutResult = aiColor === 'white' ? 'black_wins_timeout' : 'white_wins_timeout';
+      await pool.query(
+        `UPDATE human_games SET status = 'completed', result = $1, updated_at = NOW() WHERE id = $2`,
+        [timeoutResult, gameId]
+      );
+      await pool.query('UPDATE agents SET losses = losses + 1 WHERE id = $1', [game.ai_agent_id]);
+      const { broadcast } = require('../services/websocket');
+      broadcast(gameId, { type: 'timeout', result: timeoutResult });
+      console.log(`[ai timeout] game=${gameId} AI (${aiColor}) ran out of time`);
+      return { timeout: true, result: timeoutResult };
+    }
+  }
+
   let aiUci = null;
   try {
     aiUci = await getBestMove(game.fen, 1500);

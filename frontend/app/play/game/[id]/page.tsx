@@ -88,7 +88,7 @@ export default function PlayGamePage() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
-        if (msg.type === 'move' || msg.type === 'resigned') {
+        if (msg.type === 'move' || msg.type === 'resigned' || msg.type === 'timeout') {
           fetchGame()
         }
       } catch {}

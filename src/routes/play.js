@@ -22,11 +22,23 @@ function pickFallbackMove(fen) {
   return chosen.from + chosen.to + (chosen.promotion || '');
 }
 
-async function applyAiMove(gameId, game) {
+async function applyAiMove(gameId) {
+  const gameResult = await pool.query('SELECT * FROM human_games WHERE id = $1 FOR UPDATE', [gameId]);
+  if (gameResult.rows.length === 0) return null;
+
+  const game = gameResult.rows[0];
+  if (game.status !== 'active') return null;
+  if (!game.ai_agent_id) return null;
+
+  // AI color is whichever side doesn't have a user.
+  const aiColor = game.white_user_id === null ? 'white' : (game.black_user_id === null ? 'black' : null);
+  if (!aiColor) return null;
+  if (game.current_turn !== aiColor) return null;
+
   let aiUci = null;
   try {
     aiUci = await getBestMove(game.fen, 1500);
-  } catch (e) {
+  } catch {
     aiUci = pickFallbackMove(game.fen);
   }
   if (!aiUci) aiUci = pickFallbackMove(game.fen);
@@ -48,6 +60,8 @@ async function applyAiMove(gameId, game) {
     ? Math.max(0, game.white_time_ms - timeSpent)
     : Math.max(0, game.black_time_ms - timeSpent);
 
+  console.log(`[ai move] game=${gameId} color=${game.current_turn} timeSpentMs=${timeSpent} timeRemainingMs=${timeRemaining}`);
+
   await pool.query(
     `INSERT INTO human_moves (game_id, user_id, move_number, color, san, uci, fen_after, time_spent_ms)
      VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)`,
@@ -55,28 +69,33 @@ async function applyAiMove(gameId, game) {
   );
 
   let status = 'active';
-  let gameResult = null;
-  if (chess.isCheckmate()) { status = 'completed'; gameResult = game.current_turn === 'white' ? 'white_wins' : 'black_wins'; }
-  else if (chess.isDraw()) { status = 'completed'; gameResult = 'draw'; }
+  let gameResultStr = null;
+  if (chess.isCheckmate()) {
+    status = 'completed';
+    gameResultStr = game.current_turn === 'white' ? 'white_wins' : 'black_wins';
+  } else if (chess.isDraw()) {
+    status = 'completed';
+    gameResultStr = 'draw';
+  }
 
   const timeCol = game.current_turn === 'white' ? 'white_time_ms' : 'black_time_ms';
   const q = status === 'completed'
     ? `UPDATE human_games SET fen=$1, current_turn=$2, status=$3, result=$4, ${timeCol}=$5, updated_at=NOW() WHERE id=$6`
     : `UPDATE human_games SET fen=$1, current_turn=$2, status=$3, result=$4, ${timeCol}=$5, turn_started_at=NOW(), updated_at=NOW() WHERE id=$6`;
-  await pool.query(q, [newFen, nextTurn, status, gameResult, timeRemaining, gameId]);
+  await pool.query(q, [newFen, nextTurn, status, gameResultStr, timeRemaining, gameId]);
 
-  if (status === 'completed' && game.ai_agent_id) {
+  if (status === 'completed') {
     const agentIsWhite = game.white_user_id === null;
     const agentIsBlack = game.black_user_id === null;
-    const agentWon = (agentIsWhite && gameResult === 'white_wins') || (agentIsBlack && gameResult === 'black_wins');
-    const agentLost = (agentIsWhite && gameResult === 'black_wins') || (agentIsBlack && gameResult === 'white_wins');
+    const agentWon = (agentIsWhite && gameResultStr === 'white_wins') || (agentIsBlack && gameResultStr === 'black_wins');
+    const agentLost = (agentIsWhite && gameResultStr === 'black_wins') || (agentIsBlack && gameResultStr === 'white_wins');
     if (agentWon) await pool.query('UPDATE agents SET wins=wins+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
     else if (agentLost) await pool.query('UPDATE agents SET losses=losses+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
     else await pool.query('UPDATE agents SET draws=draws+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
   }
 
-  broadcast(gameId, { type: 'move', san: moveResult.san, fen: newFen, turn: nextTurn, status, result: gameResult });
-  return { san: moveResult.san, fen: newFen, status, result: gameResult };
+  broadcast(gameId, { type: 'move', san: moveResult.san, fen: newFen, turn: nextTurn, status, result: gameResultStr });
+  return { san: moveResult.san, fen: newFen, status, result: gameResultStr };
 }
 // ---------------------------------------------------------
 
@@ -187,17 +206,11 @@ router.post('/challenge-ai', authUser, async (req, res) => {
 
     // If AI plays white, make first move after short think delay
     if (!playAsWhite) {
-      const startingGame = {
-        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-        current_turn: 'white',
-        white_user_id: null,
-        black_user_id: req.user.id,
-        white_time_ms: time_control * 1000,
-        black_time_ms: time_control * 1000,
-        turn_started_at: null,
-        ai_agent_id: agent.id,
-      };
-      applyAiMove(gameId, startingGame).catch(() => {});
+      await pool.query(
+        'UPDATE human_games SET current_turn = $1, turn_started_at = NOW() WHERE id = $2',
+        ['white', gameId]
+      );
+      applyAiMove(gameId).catch(() => {});
     }
 
     res.json({ success: true, gameId, playingAs: playAsWhite ? 'white' : 'black' });
@@ -347,17 +360,7 @@ router.post('/games/:id/move', authUser, async (req, res) => {
 
     // If human-vs-ai and still active, AI moves immediately
     if (status === 'active' && game.mode === 'human-vs-ai' && game.ai_agent_id) {
-      const aiGame = {
-        fen: newFen,
-        current_turn: nextTurn,
-        white_user_id: game.white_user_id,
-        black_user_id: game.black_user_id,
-        white_time_ms: game.current_turn === 'white' ? timeRemaining : game.white_time_ms,
-        black_time_ms: game.current_turn === 'black' ? timeRemaining : game.black_time_ms,
-        turn_started_at: null,
-        ai_agent_id: game.ai_agent_id,
-      };
-      applyAiMove(req.params.id, aiGame).catch(() => {});
+      applyAiMove(req.params.id).catch(() => {});
     }
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });

@@ -1,6 +1,9 @@
 import { API_URL as BACKEND_API_URL } from '@/lib/config'
 import Link from 'next/link'
 
+// Avoid static prerender at build time (Vercel can fail if backend/API is unreachable)
+export const dynamic = 'force-dynamic'
+
 interface Game {
   id: string
   white: string

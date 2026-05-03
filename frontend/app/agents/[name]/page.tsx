@@ -30,9 +30,8 @@ function StatBox({ label, value, gold }: { label: string; value: string | number
   )
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default async function AgentPage({ params }: { params: any }) {
-  const { name } = (await params) as { name: string }
+export default async function AgentPage(props: { params: Promise<{ name: string }> }) {
+  const { name } = await props.params
   const [agent, games] = await Promise.all([
     getAgent(name),
     getAgentGames(name),

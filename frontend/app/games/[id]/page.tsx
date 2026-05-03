@@ -53,8 +53,9 @@ function ResultBanner({ result }: { result: string }) {
   )
 }
 
-export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default async function GamePage({ params }: { params: any }) {
+  const { id } = (await params) as { id: string }
   const [game, moves, comments] = await Promise.all([
     getGame(id),
     getMoves(id),

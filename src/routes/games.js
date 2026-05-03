@@ -6,6 +6,7 @@ const pool = require('../db/pool');
 const { authenticate } = require('../middleware/auth');
 
 const GAME_TIME_MS = 10 * 60 * 1000; // 10 minutes per player
+const { analyzeAgentGame } = require('../services/precisionScore');
 
 // Helper: get time elapsed since turn started
 function getElapsedMs(turnStartedAt) {
@@ -14,11 +15,12 @@ function getElapsedMs(turnStartedAt) {
 }
 
 // Helper: notify agent via webhook (fire and forget)
-async function notifyAgent(agent, gameId, color) {
+async function notifyAgent(agent, gameId, color, timeRemainingMs) {
   if (!agent.webhook_url) return;
   try {
     const { default: fetch } = await import('node-fetch').catch(() => ({ default: null }));
     if (!fetch) return;
+    const baseUrl = process.env.BASE_URL || 'https://api.checkonchess.com';
     await fetch(agent.webhook_url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -27,8 +29,10 @@ async function notifyAgent(agent, gameId, color) {
         game_id: gameId,
         your_color: color,
         model: agent.model || 'anthropic/claude-sonnet-4-6',
-        fetch_url: `${process.env.BASE_URL}/api/v1/games/${gameId}`,
-        move_url: `${process.env.BASE_URL}/api/v1/games/${gameId}/move`,
+        personality: agent.personality || null,
+        time_remaining_ms: timeRemainingMs,
+        fetch_url: `${baseUrl}/api/v1/games/${gameId}`,
+        move_url: `${baseUrl}/api/v1/games/${gameId}/move`,
       }),
       signal: AbortSignal.timeout(5000),
     });
@@ -177,7 +181,8 @@ router.post('/:id/move', authenticate, async (req, res) => {
       `SELECT g.*, wa.name AS white_name, ba.name AS black_name,
               wa.webhook_url AS white_webhook, ba.webhook_url AS black_webhook,
               wa.id AS white_agent_id, ba.id AS black_agent_id,
-              wa.model AS white_model, ba.model AS black_model
+              wa.model AS white_model, ba.model AS black_model,
+              wa.personality AS white_personality, ba.personality AS black_personality
        FROM games g
        JOIN agents wa ON g.white_id = wa.id
        JOIN agents ba ON g.black_id = ba.id
@@ -309,10 +314,17 @@ router.post('/:id/move', authenticate, async (req, res) => {
     // Notify next player via webhook
     if (newStatus === 'active') {
       const nextWebhook = nextTurn === 'white' ? game.white_webhook : game.black_webhook;
-      const nextModel = nextTurn === 'white' ? game.white_model : game.black_model;
+      const nextModel  = nextTurn === 'white' ? game.white_model  : game.black_model;
+      const nextPersonality = nextTurn === 'white' ? game.white_personality : game.black_personality;
+      const nextTimeMs = nextTurn === 'white' ? whiteTimeUpdate : blackTimeUpdate;
       if (nextWebhook) {
-        notifyAgent({ webhook_url: nextWebhook, model: nextModel }, game.id, nextTurn);
+        notifyAgent({ webhook_url: nextWebhook, model: nextModel, personality: nextPersonality }, game.id, nextTurn, nextTimeMs);
       }
+    }
+
+    // Trigger async precision analysis after game ends
+    if (newStatus === 'completed') {
+      analyzeAgentGame(game.id).catch(() => {});
     }
 
     res.json({

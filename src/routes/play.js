@@ -9,8 +9,10 @@ const { authenticate } = require('../middleware/auth');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 
-// --- AI move: Stockfish engine (fallback to heuristic) ---
-const { getBestMove } = require('../services/stockfish');
+// --- AI move: Stockfish engine + LLM personality ---
+const { getBestMove, getTopMoves } = require('../services/stockfish');
+const { getLLMMove } = require('../services/llmMove');
+const { analyzeHumanGame } = require('../services/precisionScore');
 
 function pickFallbackMove(fen) {
   const chess = new Chess(fen);
@@ -23,7 +25,13 @@ function pickFallbackMove(fen) {
 }
 
 async function applyAiMove(gameId) {
-  const gameResult = await pool.query('SELECT * FROM human_games WHERE id = $1 FOR UPDATE', [gameId]);
+  const gameResult = await pool.query(
+    `SELECT hg.*, a.personality, a.model AS agent_model, a.name AS agent_name, a.webhook_url AS agent_webhook
+     FROM human_games hg
+     LEFT JOIN agents a ON hg.ai_agent_id = a.id
+     WHERE hg.id = $1 FOR UPDATE`,
+    [gameId]
+  );
   if (gameResult.rows.length === 0) return null;
 
   const game = gameResult.rows[0];
@@ -54,10 +62,65 @@ async function applyAiMove(gameId) {
   }
 
   let aiUci = null;
-  try {
-    aiUci = await getBestMove(game.fen, 1500);
-  } catch {
-    aiUci = pickFallbackMove(game.fen);
+  let aiThought = null;
+
+  // If agent has a webhook_url, notify it and let it respond via /ai-move endpoint
+  // (non-blocking: we skip internal move generation and wait for the agent to call back)
+  if (game.agent_webhook) {
+    try {
+      const { default: fetch } = await import('node-fetch').catch(() => ({ default: null }));
+      if (fetch) {
+        const aiTimeMs = aiColor === 'white' ? game.white_time_ms : game.black_time_ms;
+        fetch(game.agent_webhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            event: 'your_turn',
+            game_id: gameId,
+            your_color: aiColor,
+            fen: game.fen,
+            time_remaining_ms: aiTimeMs,
+            move_url: `${process.env.BASE_URL || 'https://api.checkonchess.com'}/api/v1/play/games/${gameId}/ai-move`,
+          }),
+          signal: AbortSignal.timeout(5000),
+        }).catch(() => {});
+      }
+    } catch { /* webhook failure is non-fatal */ }
+    // Don't make an internal move — agent will call /ai-move
+    return null;
+  }
+
+  // No webhook: use internal Stockfish + optional LLM personality
+  if (game.personality && game.agent_model && process.env.OPENROUTER_API_KEY) {
+    // LLM personality mode: get top moves, let LLM choose
+    try {
+      const candidates = await getTopMoves(game.fen, 3, 1000);
+      if (candidates.length > 0) {
+        const llmResult = await getLLMMove({
+          fen: game.fen,
+          color: aiColor,
+          candidates,
+          personality: game.personality,
+          model: game.agent_model,
+          agentName: game.agent_name,
+        });
+        if (llmResult) {
+          aiUci = llmResult.uci;
+          aiThought = llmResult.thought;
+        }
+      }
+    } catch (err) {
+      console.warn(`[llmMove] Falling back to Stockfish: ${err.message}`);
+    }
+  }
+
+  // Fallback: pure Stockfish
+  if (!aiUci) {
+    try {
+      aiUci = await getBestMove(game.fen, 1500);
+    } catch {
+      aiUci = pickFallbackMove(game.fen);
+    }
   }
   if (!aiUci) aiUci = pickFallbackMove(game.fen);
   if (!aiUci) return null;
@@ -112,7 +175,25 @@ async function applyAiMove(gameId) {
     else await pool.query('UPDATE agents SET draws=draws+1, last_active=NOW() WHERE id=$1', [game.ai_agent_id]);
   }
 
-  broadcast(gameId, { type: 'move', san: moveResult.san, fen: newFen, turn: nextTurn, status, result: gameResultStr });
+  broadcast(gameId, {
+    type: 'move',
+    san: moveResult.san,
+    fen: newFen,
+    turn: nextTurn,
+    status,
+    result: gameResultStr,
+    white_time_ms: game.current_turn === 'white' ? timeRemaining : game.white_time_ms,
+    black_time_ms: game.current_turn === 'black' ? timeRemaining : game.black_time_ms,
+    thought: aiThought || undefined,
+    thinker: game.agent_name || undefined,
+  });
+
+  // Trigger precision analysis async after game ends
+  if (status === 'completed') {
+    const humanColor = game.white_user_id !== null ? 'white' : 'black';
+    analyzeHumanGame(gameId, humanColor).catch(() => {});
+  }
+
   return { san: moveResult.san, fen: newFen, status, result: gameResultStr };
 }
 // ---------------------------------------------------------
@@ -290,7 +371,22 @@ router.get('/games/:id', async (req, res) => {
       [req.params.id]
     );
 
-    res.json({ success: true, game: result.rows[0], moves: movesResult.rows });
+    const g = result.rows[0];
+
+    // Calculate live time for the active player (subtract elapsed since turn started)
+    let whiteTimeMs = parseInt(g.white_time_ms);
+    let blackTimeMs = parseInt(g.black_time_ms);
+    if (g.status === 'active' && g.turn_started_at) {
+      const elapsed = Date.now() - new Date(g.turn_started_at).getTime();
+      if (g.current_turn === 'white') whiteTimeMs = Math.max(0, whiteTimeMs - elapsed);
+      else blackTimeMs = Math.max(0, blackTimeMs - elapsed);
+    }
+
+    res.json({
+      success: true,
+      game: { ...g, white_time_ms: whiteTimeMs, black_time_ms: blackTimeMs },
+      moves: movesResult.rows,
+    });
   } catch (err) {
     console.error('Get game error:', err);
     res.status(500).json({ success: false, error: 'Internal server error' });
@@ -367,6 +463,9 @@ router.post('/games/:id/move', authUser, async (req, res) => {
     await pool.query(updateQuery, [newFen, nextTurn, status, gameResult, timeRemaining, req.params.id]);
 
     // Broadcast to WebSocket room
+    const updatedWhiteMs = game.current_turn === 'white' ? timeRemaining : parseInt(game.white_time_ms);
+    const updatedBlackMs = game.current_turn === 'black' ? timeRemaining : parseInt(game.black_time_ms);
+
     broadcast(req.params.id, {
       type: 'move',
       san: moveResult.san,
@@ -374,11 +473,19 @@ router.post('/games/:id/move', authUser, async (req, res) => {
       turn: nextTurn,
       status,
       result: gameResult,
+      white_time_ms: updatedWhiteMs,
+      black_time_ms: updatedBlackMs,
     });
 
     // If human-vs-ai and still active, AI moves immediately
     if (status === 'active' && game.mode === 'human-vs-ai' && game.ai_agent_id) {
       applyAiMove(req.params.id).catch(() => {});
+    }
+
+    // Trigger precision analysis async after game ends (human-vs-ai)
+    if (status === 'completed' && game.mode === 'human-vs-ai') {
+      const humanColor = game.white_user_id === req.user.id ? 'white' : 'black';
+      analyzeHumanGame(req.params.id, humanColor).catch(() => {});
     }
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });
@@ -492,6 +599,9 @@ router.post('/games/:id/ai-move', authenticate, async (req, res) => {
 
     await pool.query('UPDATE agents SET last_active = NOW() WHERE id = $1', [req.agent.id]);
 
+    const agentUpdWhiteMs = game.current_turn === 'white' ? timeRemaining : parseInt(game.white_time_ms);
+    const agentUpdBlackMs = game.current_turn === 'black' ? timeRemaining : parseInt(game.black_time_ms);
+
     broadcast(req.params.id, {
       type: 'move',
       san: moveResult.san,
@@ -499,6 +609,8 @@ router.post('/games/:id/ai-move', authenticate, async (req, res) => {
       turn: nextTurn,
       status,
       result: gameResult,
+      white_time_ms: agentUpdWhiteMs,
+      black_time_ms: agentUpdBlackMs,
     });
 
     res.json({ success: true, san: moveResult.san, fen: newFen, status, result: gameResult });

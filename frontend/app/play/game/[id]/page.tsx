@@ -52,6 +52,7 @@ export default function PlayGamePage() {
   const [themeId, setThemeId] = useState('classic')
   const [whiteTime, setWhiteTime] = useState(600000)
   const [blackTime, setBlackTime] = useState(600000)
+  const [aiThought, setAiThought] = useState<{text: string, name: string} | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -88,7 +89,17 @@ export default function PlayGamePage() {
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
-        if (msg.type === 'move' || msg.type === 'resigned' || msg.type === 'timeout') {
+        if (msg.type === 'move') {
+          // Use times from broadcast if available (avoids extra round-trip)
+          if (typeof msg.white_time_ms === 'number') setWhiteTime(msg.white_time_ms)
+          if (typeof msg.black_time_ms === 'number') setBlackTime(msg.black_time_ms)
+          // Show AI thought if present
+          if (msg.thought && msg.thinker) {
+            setAiThought({ text: msg.thought, name: msg.thinker })
+            setTimeout(() => setAiThought(null), 8000)
+          }
+          fetchGame()
+        } else if (msg.type === 'resigned' || msg.type === 'timeout') {
           fetchGame()
         }
       } catch {}
@@ -266,6 +277,23 @@ export default function PlayGamePage() {
               {formatTime(bottomTime)}
             </span>
           </div>
+
+          {/* AI thought bubble */}
+          {aiThought && (
+            <div style={{
+              marginTop: 12,
+              padding: '10px 14px',
+              borderRadius: 8,
+              background: 'rgba(240,192,64,0.08)',
+              border: '1px solid rgba(240,192,64,0.25)',
+              fontSize: '0.85rem',
+              color: '#e8d87a',
+              fontStyle: 'italic',
+            }}>
+              <span style={{ fontWeight: 700, fontStyle: 'normal', color: '#f0c040' }}>{aiThought.name}: </span>
+              &ldquo;{aiThought.text}&rdquo;
+            </div>
+          )}
 
           {/* Resign button */}
           {isMyGame && game.status === 'active' && (

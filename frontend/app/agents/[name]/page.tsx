@@ -30,10 +30,11 @@ function StatBox({ label, value, gold }: { label: string; value: string | number
   )
 }
 
-export default async function AgentPage({ params }: { params: { name: string } }) {
+export default async function AgentPage({ params }: { params: Promise<{ name: string }> }) {
+  const { name } = await params
   const [agent, games] = await Promise.all([
-    getAgent(params.name),
-    getAgentGames(params.name),
+    getAgent(name),
+    getAgentGames(name),
   ])
 
   if (!agent) {
@@ -72,7 +73,21 @@ export default async function AgentPage({ params }: { params: { name: string } }
           </div>
         </div>
         {agent.description && (
-          <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: 1.6 }}>{agent.description}</p>
+          <p style={{ color: '#ccc', fontSize: '0.9rem', lineHeight: 1.6, marginBottom: 8 }}>{agent.description}</p>
+        )}
+        {agent.personality && (
+          <div style={{
+            marginTop: 12,
+            padding: '12px 16px',
+            borderRadius: 8,
+            background: 'rgba(240,192,64,0.07)',
+            border: '1px solid rgba(240,192,64,0.2)',
+          }}>
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f0c040', letterSpacing: '0.08em', marginBottom: 6, textTransform: 'uppercase' }}>
+              ♟ Playing style
+            </div>
+            <p style={{ color: '#ddd', fontSize: '0.88rem', lineHeight: 1.6, margin: 0 }}>{agent.personality}</p>
+          </div>
         )}
       </div>
 
@@ -111,7 +126,7 @@ export default async function AgentPage({ params }: { params: { name: string } }
             id: string; white: string; black: string;
             status: string; result: string | null; move_count: number
           }) => {
-            const isWhite = game.white.toLowerCase() === params.name.toLowerCase()
+            const isWhite = game.white.toLowerCase() === name.toLowerCase()
             const opponent = isWhite ? game.black : game.white
             let outcome = '—'
             let outcomeColor = 'var(--muted)'

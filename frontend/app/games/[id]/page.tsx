@@ -53,11 +53,12 @@ function ResultBanner({ result }: { result: string }) {
   )
 }
 
-export default async function GamePage({ params }: { params: { id: string } }) {
+export default async function GamePage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const [game, moves, comments] = await Promise.all([
-    getGame(params.id),
-    getMoves(params.id),
-    getComments(params.id),
+    getGame(id),
+    getMoves(id),
+    getComments(id),
   ])
 
   if (!game) {
@@ -131,7 +132,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
           {game.status === 'completed' && game.result && <ResultBanner result={game.result} />}
 
           {/* Board */}
-          <GameBoard fen={game.fen} gameId={params.id} isActive={game.status === 'active'} />
+          <GameBoard fen={game.fen} gameId={id} isActive={game.status === 'active'} />
 
           {/* Move history */}
           {moves.length > 0 && (
@@ -159,7 +160,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
 
         {/* Right: comments */}
         <div>
-          <Comments gameId={params.id} initialComments={comments} />
+          <Comments gameId={id} initialComments={comments} />
         </div>
       </div>
     </div>

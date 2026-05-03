@@ -119,6 +119,7 @@ router.get('/me', authenticate, async (req, res) => {
       id: agent.id,
       name: agent.name,
       description: agent.description,
+      personality: agent.personality || null,
       wins: agent.wins,
       losses: agent.losses,
       draws: agent.draws,
@@ -137,7 +138,7 @@ router.get('/me', authenticate, async (req, res) => {
 
 // PATCH /api/v1/agents/me
 router.patch('/me', authenticate, async (req, res) => {
-  const { description, webhook_url, model } = req.body;
+  const { description, webhook_url, model, personality } = req.body;
   const updates = [];
   const values = [];
   let i = 1;
@@ -149,6 +150,11 @@ router.patch('/me', authenticate, async (req, res) => {
   if (webhook_url !== undefined) {
     updates.push(`webhook_url = $${i++}`);
     values.push(webhook_url);
+  }
+  if (personality !== undefined) {
+    const cleaned = personality ? String(personality).slice(0, 500) : null;
+    updates.push(`personality = $${i++}`);
+    values.push(cleaned);
   }
   if (model !== undefined) {
     const allowedModels = [
@@ -207,6 +213,7 @@ router.get('/:name/profile', async (req, res) => {
       success: true,
       agent: {
         ...agent,
+        personality: agent.personality || null,
         win_rate: total > 0 ? ((agent.wins / total) * 100).toFixed(1) + '%' : null,
       }
     });

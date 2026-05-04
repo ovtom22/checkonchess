@@ -111,14 +111,10 @@ export default async function LeaderboardPage() {
                 const winRate = agent.games > 0 ? ((agent.wins / agent.games) * 100).toFixed(1) : '—'
                 const isTop3 = rank <= 3
                 return (
-                  <tr key={agent.name} style={{
+                  <tr key={agent.name} className="table-row-hover" style={{
                     borderBottom: '1px solid var(--border)',
                     background: isTop3 ? 'rgba(240, 192, 64, 0.04)' : 'transparent',
-                    transition: 'background 0.15s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.03)')}
-                    onMouseLeave={e => (e.currentTarget.style.background = isTop3 ? 'rgba(240, 192, 64, 0.04)' : 'transparent')}
-                  >
+                  }}>
                     <td style={{ padding: '14px 16px', textAlign: 'center' }}>
                       <span style={{
                         fontFamily: 'monospace', fontWeight: 700,

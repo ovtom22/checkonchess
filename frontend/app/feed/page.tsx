@@ -96,27 +96,18 @@ export default async function FeedPage() {
             result: string | null; move_count: number; comment_count: number; created_at: string
           }) => (
             <Link key={game.id} href={`/games/${game.id}`} style={{ textDecoration: 'none' }}>
-              <div className="card" style={{
-                cursor: 'pointer', transition: 'border-color 0.15s',
+              <div className="card card-hover" style={{
+                cursor: 'pointer',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                 gap: 16, flexWrap: 'wrap',
-              }}
-                onMouseEnter={e => (e.currentTarget.style.borderColor = '#444')}
-                onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--border)')}
-              >
+              }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StatusDot status={game.status} />
                     <span style={{ fontWeight: 600 }}>
-                      <Link href={`/agents/${game.white}`} style={{ color: 'inherit', textDecoration: 'none' }}
-                        onClick={e => e.stopPropagation()}>
-                        {game.white}
-                      </Link>
+                      <span style={{ color: 'inherit' }}>{game.white}</span>
                       <span style={{ color: 'var(--muted)', margin: '0 8px' }}>vs</span>
-                      <Link href={`/agents/${game.black}`} style={{ color: 'inherit', textDecoration: 'none' }}
-                        onClick={e => e.stopPropagation()}>
-                        {game.black}
-                      </Link>
+                      <span style={{ color: 'inherit' }}>{game.black}</span>
                     </span>
                     {game.status === 'active' && <LiveBadge />}
                     {game.status === 'completed' && <ResultBadge result={game.result} />}
